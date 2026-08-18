@@ -1,7 +1,5 @@
 module.exports = function(RED) {
     "use strict";
-    const fetch = require('node-fetch');
-    const https = require('https');
 
     function encodeRFC2047(str) {
         if (typeof str !== 'string' || /^[\x00-\x7F]*$/.test(str)) {
@@ -145,10 +143,12 @@ module.exports = function(RED) {
                 body: messageBody || "" // ntfy allows empty body if other headers (like Title) are set
             };
 
+            let tlsDisabled = false;
+            let prevTlsReject;
             if (fullUrl.startsWith('https://') && node.insecure) {
-                fetchOptions.agent = new https.Agent({
-                    rejectUnauthorized: false
-                });
+                tlsDisabled = true;
+                prevTlsReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+                process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
             }
 
             node.status({fill:"blue", shape:"dot", text:"sending..."});
@@ -167,6 +167,14 @@ module.exports = function(RED) {
                 node.status({fill:"red", shape:"ring", text:"send error"});
                 if (err.code === 'EPROTO' || (err.message && err.message.toLowerCase().includes('wrong version number'))) {
                     node.warn("SSL Error (EPROTO/wrong version number). Ensure server URL scheme (http/https) is correct. If using self-signed certs or specific TLS versions, 'Allow insecure HTTPS' might help for cert validation but not for protocol mismatches.");
+                }
+            } finally {
+                if (tlsDisabled) {
+                    if (prevTlsReject === undefined) {
+                        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+                    } else {
+                        process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTlsReject;
+                    }
                 }
             }
 

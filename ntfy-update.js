@@ -1,7 +1,5 @@
 module.exports = function(RED) {
     "use strict";
-    const fetch = require('node-fetch');
-    const https = require('https');
 
     function NtfyUpdateNode(config) {
         RED.nodes.createNode(this, config);
@@ -10,6 +8,7 @@ module.exports = function(RED) {
         this.command = config.command;
         this.topic = config.topic;
         this.sequenceId = config.sequenceId;
+        this.insecure = config.insecure || false;
 
         let node = this;
 
@@ -68,8 +67,12 @@ module.exports = function(RED) {
                 headers: headers
             };
 
+            let tlsDisabled = false;
+            let prevTlsReject;
             if (url.startsWith('https://') && node.insecure) {
-                fetchOptions.agent = new https.Agent({ rejectUnauthorized: false });
+                tlsDisabled = true;
+                prevTlsReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+                process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
             }
 
             node.status({fill:"blue", shape:"dot", text:`${command}...`});
@@ -86,6 +89,14 @@ module.exports = function(RED) {
             } catch (err) {
                 node.error(`Failed to send Ntfy update: ${err.message}`, msg);
                 node.status({fill:"red", shape:"ring", text:"send error"});
+            } finally {
+                if (tlsDisabled) {
+                    if (prevTlsReject === undefined) {
+                        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+                    } else {
+                        process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTlsReject;
+                    }
+                }
             }
             if (done) { done(); }
         });
