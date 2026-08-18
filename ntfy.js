@@ -3,6 +3,13 @@ module.exports = function(RED) {
     const fetch = require('node-fetch');
     const https = require('https');
 
+    function encodeRFC2047(str) {
+        if (typeof str !== 'string' || /^[\x00-\x7F]*$/.test(str)) {
+            return str;
+        }
+        return `=?UTF-8?B?${Buffer.from(str, 'utf-8').toString('base64')}?=`;
+    }
+
     function NtfyNode(config) {
         RED.nodes.createNode(this, config);
         this.name = config.name;
@@ -75,21 +82,21 @@ module.exports = function(RED) {
 
             // Ntfy expects the message in the request body. Other parameters are headers.
             const headers = {};
-                        if (markdown) headers['X-Markdown'] = 'true';
-            if (title) headers['Title'] = title;
+            if (markdown) headers['X-Markdown'] = 'true';
+            if (title) headers['Title'] = encodeRFC2047(title);
             if (priority) headers['Priority'] = priority.toString();
             
             if (tags) {
                 if (Array.isArray(tags)) {
-                    headers['Tags'] = tags.join(',');
+                    headers['Tags'] = tags.map(t => encodeRFC2047(t)).join(',');
                 } else if (typeof tags === 'string') {
-                    headers['Tags'] = tags;
+                    headers['Tags'] = encodeRFC2047(tags);
                 }
             }
-            if (iconUrl) headers['Icon'] = iconUrl;
-            if (clickUrl) headers['Click'] = clickUrl;
-            if (attachUrl) headers['Attach'] = attachUrl;
-            if (filename && attachUrl) headers['Filename'] = filename; // Filename is only useful with Attach
+            if (iconUrl) headers['Icon'] = encodeRFC2047(iconUrl);
+            if (clickUrl) headers['Click'] = encodeRFC2047(clickUrl);
+            if (attachUrl) headers['Attach'] = encodeRFC2047(attachUrl);
+            if (filename && attachUrl) headers['Filename'] = encodeRFC2047(filename); // Filename is only useful with Attach
             if (email) headers['Email'] = email;
             if (delay) headers['Delay'] = delay;
             if (cache) headers['Cache'] = cache;
@@ -97,12 +104,13 @@ module.exports = function(RED) {
             if (sequenceId) headers['X-sequence-id'] = sequenceId;
 
             if (actions) {
+                let formattedActions = "";
                 if (typeof actions === 'string') {
-                    headers['Actions'] = actions.trim(); // Use directly if string (e.g. from config textarea)
+                    formattedActions = actions.trim(); // Use directly if string (e.g. from config textarea)
                 } else if (Array.isArray(actions)) {
                     // If msg.actions is an array, try to format it.
                     // Each item could be a pre-formatted string or an object {type, label, url, clear?, ...}
-                    headers['Actions'] = actions.map(action => {
+                    formattedActions = actions.map(action => {
                         if (typeof action === 'string') return action;
                         if (typeof action === 'object' && action.type && action.label && action.url) {
                             let actionStr = `${action.type}, ${action.label}, ${action.url}`;
@@ -115,6 +123,9 @@ module.exports = function(RED) {
                         }
                         return null; // Invalid action object
                     }).filter(Boolean).join('; ');
+                }
+                if (formattedActions) {
+                    headers['Actions'] = encodeRFC2047(formattedActions);
                 }
             }
 
